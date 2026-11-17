@@ -1,0 +1,115 @@
+<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>لوحة إدارة الاشتراكات</title>
+<style>
+:root{--p:#0d9488;--pd:#0f766e;--bg:#f1f5f9;--c:#fff;--t:#0f172a;--m:#64748b;--ok:#059669;--bad:#dc2626;--bd:#e2e8f0}
+@media(prefers-color-scheme:dark){:root{--bg:#0b1220;--c:#111a2b;--t:#e5e7eb;--m:#94a3b8;--bd:#233049}}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Tahoma,sans-serif}
+body{background:var(--bg);color:var(--t);padding:16px;max-width:800px;margin:0 auto;padding-top:calc(16px + env(safe-area-inset-top,0px))}
+h1{color:var(--pd);font-size:1.2rem;margin-bottom:14px}
+.card{background:var(--c);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+h2{font-size:.95rem;color:var(--pd);margin-bottom:10px;border-bottom:2px solid var(--bd);padding-bottom:6px}
+.fg{margin-bottom:8px}label{display:block;font-size:.78rem;font-weight:600;color:var(--m);margin-bottom:3px}
+input,select{width:100%;padding:9px;border:1px solid var(--bd);border-radius:6px;background:var(--c);color:var(--t);font-size:.9rem}
+.row{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+button{padding:10px 16px;border:0;border-radius:6px;background:var(--p);color:#fff;font-weight:700;cursor:pointer;font-size:.88rem;margin-top:8px}
+button.d{background:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th,td{padding:7px;text-align:right;border-bottom:1px solid var(--bd)}
+th{background:var(--bg);color:var(--m);font-size:.72rem}
+.msg{padding:10px;border-radius:6px;margin-top:8px;font-size:.84rem}
+.msg.ok{background:rgba(5,150,105,.12);color:var(--ok)}
+.msg.bad{background:rgba(220,38,38,.12);color:var(--bad)}
+</style></head><body>
+<h1>🔧 لوحة إدارة اشتراكات الصيدليات</h1>
+
+<div class="card">
+  <h2>الاتصال</h2>
+  <div class="fg"><label>رابط Web App (Apps Script)</label><input id="url" placeholder="https://script.google.com/macros/s/.../exec"></div>
+  <div class="fg"><label>كلمة سر الإدارة (ADMIN_SECRET)</label><input id="secret" type="password"></div>
+  <button onclick="saveConn()">💾 حفظ الاتصال في هذا الجهاز</button>
+  <div id="connMsg"></div>
+</div>
+
+<div class="card">
+  <h2>➕ إضافة صيدلية جديدة</h2>
+  <div class="row">
+    <div class="fg"><label>كود الصيدلية</label><input id="n_code" placeholder="PH-0001"></div>
+    <div class="fg"><label>كلمة المرور الأولية</label><input id="n_pass"></div>
+    <div class="fg"><label>اسم الصيدلية</label><input id="n_name"></div>
+    <div class="fg"><label>الإيميل (للتنبيهات)</label><input id="n_email" type="email"></div>
+    <div class="fg"><label>الهاتف (اختياري)</label><input id="n_phone"></div>
+    <div class="fg"><label>نوع الاشتراك</label><select id="n_plan"><option value="monthly">شهري</option><option value="6months">6 أشهر</option><option value="yearly">سنوي</option></select></div>
+  </div>
+  <button onclick="addSub()">➕ إضافة</button>
+  <div id="addMsg"></div>
+</div>
+
+<div class="card">
+  <h2>🔄 تجديد / إيقاف اشتراك</h2>
+  <div class="row">
+    <div class="fg"><label>كود الصيدلية</label><input id="r_code"></div>
+    <div class="fg"><label>مدة التجديد</label><select id="r_plan"><option value="monthly">شهر</option><option value="6months">6 أشهر</option><option value="yearly">سنة</option></select></div>
+  </div>
+  <button onclick="renewSub()">🔄 تجديد</button>
+  <button class="d" onclick="suspendSub(true)">⛔ إيقاف</button>
+  <button onclick="suspendSub(false)">✅ تفعيل</button>
+  <div id="renewMsg"></div>
+</div>
+
+<div class="card">
+  <h2>📋 كل الصيدليات</h2>
+  <button onclick="loadList()">🔄 تحديث القائمة</button>
+  <div id="listArea"></div>
+</div>
+
+<script>
+function conn(){return {url:localStorage.getItem('adm_url')||'',secret:localStorage.getItem('adm_secret')||''}}
+function saveConn(){
+  localStorage.setItem('adm_url',document.getElementById('url').value.trim());
+  localStorage.setItem('adm_secret',document.getElementById('secret').value.trim());
+  msg('connMsg','تم الحفظ','ok');
+}
+window.onload=()=>{document.getElementById('url').value=conn().url;document.getElementById('secret').value=conn().secret;};
+
+function msg(id,text,kind){document.getElementById(id).innerHTML=`<div class="msg ${kind}">${text}</div>`}
+
+async function call(action,extra){
+  const c=conn();
+  if(!c.url){alert('أدخل رابط الاتصال واحفظه أولاً');return{ok:false,error:'لا يوجد رابط'}}
+  try{
+    const res=await fetch(c.url,{method:'POST',body:JSON.stringify({action,secret:c.secret,...extra})});
+    return await res.json();
+  }catch(e){return{ok:false,error:'تعذر الاتصال: '+e.message}}
+}
+
+async function addSub(){
+  const r=await call('adminAdd',{
+    code:document.getElementById('n_code').value.trim(),
+    password:document.getElementById('n_pass').value,
+    name:document.getElementById('n_name').value.trim(),
+    email:document.getElementById('n_email').value.trim(),
+    phone:document.getElementById('n_phone').value.trim(),
+    plan:document.getElementById('n_plan').value
+  });
+  msg('addMsg', r.ok?`✅ تمت الإضافة — ينتهي بتاريخ ${r.expiry}`:`❌ ${r.error}`, r.ok?'ok':'bad');
+  if(r.ok)loadList();
+}
+async function renewSub(){
+  const r=await call('adminRenew',{code:document.getElementById('r_code').value.trim(),plan:document.getElementById('r_plan').value});
+  msg('renewMsg', r.ok?`✅ تم التجديد — ينتهي بتاريخ ${r.expiry}`:`❌ ${r.error}`, r.ok?'ok':'bad');
+  if(r.ok)loadList();
+}
+async function suspendSub(flag){
+  const r=await call('adminSuspend',{code:document.getElementById('r_code').value.trim(),suspend:flag});
+  msg('renewMsg', r.ok?'✅ تم':`❌ ${r.error}`, r.ok?'ok':'bad');
+  if(r.ok)loadList();
+}
+async function loadList(){
+  const r=await call('adminList',{});
+  if(!r.ok){document.getElementById('listArea').innerHTML=`<div class="msg bad">${r.error}</div>`;return}
+  const rows=r.list.map(x=>`<tr><td>${x.code}</td><td>${x.name||''}</td><td>${x.plan||''}</td><td>${x.expiry}</td><td>${x.status==='active'?'✅ فعال':'⛔ موقوف'}</td></tr>`).join('');
+  document.getElementById('listArea').innerHTML=`<table><tr><th>الكود</th><th>الاسم</th><th>النوع</th><th>الانتهاء</th><th>الحالة</th></tr>${rows||'<tr><td colspan=5>لا توجد صيدليات</td></tr>'}</table>`;
+}
+</script>
+</body></html>
